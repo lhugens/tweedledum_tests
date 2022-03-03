@@ -9,8 +9,9 @@
 #include <mockturtle/io/dimacs_reader.hpp>
 #include <mockturtle/io/write_dot.hpp>
 #include <mockturtle/networks/xag.hpp>
+#include <tweedledum/Synthesis/xag_synth.h>
+#include <tweedledum/Utils/Visualization/string_utf8.h>
 
-using namespace mockturtle;
 using namespace std;
 
 /* generate either 0 or 1 with equal probability */
@@ -55,32 +56,77 @@ string random_SAT(const int N, int K, const int M){
     return dimacs;
 }
 
+void test1(){
+    /* create a xag from a dimacs string and print it*/
+    mockturtle::xag_network xag;
+    std::string filename ("/home/hugens/shared/uni/project/tweedledum/examples/3sat.dimacs");
+    lorina::read_dimacs(filename, mockturtle::dimacs_reader(xag));
+    mockturtle::write_dot(xag, std::cout);
+}
+
+void test2(){
+    /* check if this dimacs instance gives same oracle in both python and cpp implementations*/
+    std::string dimacs_str ("p cnf 3 5\n-1 -2 -3 0\n1 -2 3 0\n1 2 -3 0\n1 -2 -3 0\n-1 2 3 0");
+    std::stringstream ss(dimacs_str);
+    mockturtle::xag_network xag;
+    lorina::read_dimacs(ss, mockturtle::dimacs_reader(xag));
+    tweedledum::Circuit oracle = tweedledum::xag_synth(xag);
+    tweedledum::print(oracle, 1000);
+}
+
+void test3(){
+    /* extracting number of qubits and circuit depth */
+    std::string dimacs_str ("p cnf 3 5\n-1 -2 -3 0\n1 -2 3 0\n1 2 -3 0\n1 -2 -3 0\n-1 2 3 0");
+    std::stringstream ss(dimacs_str);
+    mockturtle::xag_network xag;
+    lorina::read_dimacs(ss, mockturtle::dimacs_reader(xag));
+    tweedledum::Circuit oracle = tweedledum::xag_synth(xag);
+    tweedledum::print(oracle, 1000);
+
+    cout << "num_qubits = " << oracle.num_qubits() << "\n";
+    cout << "num_instructions = " << oracle.num_instructions() << "\n";
+}
+
+void test4(){
+    /* this test shows that sizeof(xag) returns the size of the mockturtle::xag_network type
+     * and not necessarily of what is stored in that type */
+    std::string dimacs_str ("p cnf 3 5\n-1 -2 -3 0\n1 -2 3 0\n1 2 -3 0\n1 -2 -3 0\n-1 2 3 0");
+    std::stringstream ss(dimacs_str);
+    mockturtle::xag_network xag;
+    lorina::read_dimacs(ss, mockturtle::dimacs_reader(xag));
+    cout << sizeof(xag) << endl;
+
+    std::stringstream ss1(random_SAT(300, 3, 1290));
+    mockturtle::xag_network xag1;
+    lorina::read_dimacs(ss1, mockturtle::dimacs_reader(xag1));
+    cout << sizeof(xag1) << endl;
+}
+
+void test5(){
+    /* since memory usage of a XAG seems to be impossible to 
+     * figure out, let's focus on network size instead */
+    std::string dimacs_str ("p cnf 3 5\n-1 -2 -3 0\n1 -2 3 0\n1 2 -3 0\n1 -2 -3 0\n-1 2 3 0");
+    std::stringstream ss(dimacs_str);
+    mockturtle::xag_network xag;
+    lorina::read_dimacs(ss, mockturtle::dimacs_reader(xag));
+    mockturtle::write_dot(xag, std::cout);
+    cout << "size = " << xag.size() << endl;
+    cout << "num_cis = " << xag.num_cis() << endl;
+    cout << "num_cos = " << xag.num_cos() << endl;
+    cout << "num_latches = " << xag.num_latches() << endl;
+    cout << "num_pis = " << xag.num_pis() << endl;
+    cout << "num_pos = " << xag.num_pos() << endl;
+    cout << "num_registers = " << xag.num_registers() << endl;
+    cout << "num_gates = " << xag.num_gates() << endl;
+
+}
+
+
 int main(){
 
     /* intialize random seed for the rand() generator */
     srand (time(NULL));
 
-    //string s = random_SAT(10, 4, 3);
-    
-    /* this works
-    xag_network xag;
-    std::string filename ("/home/hugens/shared/uni/project/tweedledum/examples/3sat.dimacs");
-    lorina::read_dimacs(filename, dimacs_reader(xag));
-    write_dot(xag, std::cout);
-    */
-
-    xag_network xag;
-
-    //std::string dimacs_str ("p cnf 3 5\n-1 -2 -3 0\n1 -2 3 0\n1 2 -3 0\n1 -2 -3 0\n-1 2 3 0");
-    //
-    string dimacs = random_SAT(300, 3, 1290);
-
-    cout << dimacs << "\n";
-
-    std::stringstream ss(dimacs);
-
-    lorina::read_dimacs(ss, dimacs_reader(xag));
-    write_dot(xag, std::cout);
-
-    std::cout << "it fucking worked" << std::endl;
+    test5();
 }
+
