@@ -10,6 +10,7 @@
 #include <mockturtle/io/write_dot.hpp>
 #include <mockturtle/networks/xag.hpp>
 #include <tweedledum/Synthesis/xag_synth.h>
+#include <tweedledum/Synthesis/lhrs_synth.h>
 #include <tweedledum/Utils/Visualization/string_utf8.h>
 
 using namespace std;
@@ -55,6 +56,48 @@ string random_SAT(const int N, int K, const int M){
     }
     return dimacs;
 }
+
+template<class Ntk, class Drawer = mockturtle::default_dot_drawer<Ntk>>
+int num_edges(Ntk const& ntk, Drawer const& drawer = {}){
+    int e = 1;
+    ntk.foreach_node( [&]( auto const& n ) {
+        if ( !ntk.is_constant( n ) && !ntk.is_pi( n ) ){
+            ntk.foreach_fanin( n, [&]( auto const& f ) {
+                if ( !drawer.draw_signal( ntk, n, f ) )
+                    return true;
+                e++;
+                return true;
+            });
+        }
+    });
+    return e;
+}
+
+struct sat
+{
+    int N;
+    int K;
+    int M;
+    int xag_num_nodes;
+    int xag_num_edges;
+    int oracle_num_qubits;
+    int oracle_num_instr;
+
+    sat(const int n, const int k, const int m, const int depth = 0) : N(n), K(k), M(m) {
+        std::stringstream ss(random_SAT(N, K, M));
+        mockturtle::xag_network xag;
+        lorina::read_dimacs(ss, mockturtle::dimacs_reader(xag));
+
+        xag_num_nodes = xag.size();
+        xag_num_edges = num_edges(xag);
+
+        if(depth == 1){
+            tweedledum::Circuit oracle = tweedledum::xag_synth(xag);
+            oracle_num_qubits = oracle.num_qubits();
+            oracle_num_instr = oracle.num_instructions();
+        }
+    }
+};
 
 void test1(){
     /* create a xag from a dimacs string and print it*/
@@ -118,15 +161,92 @@ void test5(){
     cout << "num_pos = " << xag.num_pos() << endl;
     cout << "num_registers = " << xag.num_registers() << endl;
     cout << "num_gates = " << xag.num_gates() << endl;
-
 }
 
+void test6(){
+    /* getting network edge number */
+    //std::string dimacs_str ("p cnf 3 5\n-1 -2 -3 0\n1 -2 3 0\n1 2 -3 0\n1 -2 -3 0\n-1 2 3 0");
+    std::string dimacs_str = random_SAT(300, 3, 1290);
+    std::stringstream ss(dimacs_str);
+    mockturtle::xag_network xag;
+    lorina::read_dimacs(ss, mockturtle::dimacs_reader(xag));
+    mockturtle::write_dot(xag, std::cout);
+    cout << "num_nodes = " << xag.size() << "\n";
+    cout << "num_edges = " << num_edges(xag) << "\n";
+}
+
+void test7(){
+    /* this test shows that with the regular xag_synth mathod for building an oracle circuit
+     * from a xag_network, that the following holds:
+     * xag_num_nodes - oracle_num_qubits = 1
+     * xag_num_edges - oracle_num_instr = 2*/
+    sat p (300, 3, 1290, 1);
+
+    cout << "xag_num_nodes " << p.xag_num_nodes << "\n";
+    cout << "xag_num_edges " << p.xag_num_edges << "\n";
+    cout << "oracle_num_qubits " << p.oracle_num_qubits << "\n";
+    cout << "oracle_num_instr " << p.oracle_num_instr << "\n";
+
+    for(int n=20; n<300; n += 20){
+        int m_min = 2*n;
+        int m_max = 8*n;
+        int m_step = (m_max - m_min) / 100;
+
+        for(int m = m_min; m<m_max; m += m_step){
+            sat p (n, 5, m, 1);
+            if(((p.xag_num_nodes - p.oracle_num_qubits) != 1) && ((p.xag_num_edges - p.oracle_num_instr) != 2))
+                cout << "found exception" << "\n";
+        }
+    }  
+}
+
+void test8(){
+    /* does network features only depend on N, K, M, or also in the specific instance?
+     * it seems like num_nodes and num_edges are almost the same. For fixes N, K, M, 
+     * let's find the highest deviation from the moving mean */
+
+    float mean_nodes = 0;
+    float mean_edges = 0;
+    int max_dev_nodes = 0;
+    int max_dev_edges = 0;
+
+    for(int i=0; i<1000000; i++){
+        sat p (20, 8, 80);
+
+        mean_nodes += (p.xag_num_nodes - mean_nodes) / (i+1);
+        mean_edges += (p.xag_num_edges - mean_edges) / (i+1);
+
+        int dev_edges = p.xag_num_nodes - mean_nodes;
+        int dev_nodes = p.xag_num_edges - mean_edges;
+
+        if(dev_nodes > max_dev_nodes){
+            max_dev_nodes = dev_nodes;
+            cout << "max_dev_nodes " << max_dev_nodes << "\n";
+        }
+
+        if(dev_edges > max_dev_edges){
+            max_dev_edges = dev_edges;
+            cout << "max_dev_edges " << max_dev_edges << "\n";
+        }
+    }
+}
+
+void test9(){
+    /* try k-LUT based method */
+    std::string dimacs_str ("p cnf 3 5\n-1 -2 -3 0\n1 -2 3 0\n1 2 -3 0\n1 -2 -3 0\n-1 2 3 0");
+    std::stringstream ss(dimacs_str);
+    mockturtle::xag_network xag;
+    lorina::read_dimacs(ss, mockturtle::dimacs_reader(xag));
+    tweedledum::Circuit oracle = tweedledum::lhrs_synth(xag);
+    tweedledum::print(oracle, 1000);
+    cout << oracle.num_qubits() << "\n";
+    cout << oracle.num_instructions() << "\n";
+}
 
 int main(){
 
     /* intialize random seed for the rand() generator */
     srand (time(NULL));
 
-    test5();
+    test9();
 }
-
